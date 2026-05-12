@@ -8,6 +8,9 @@ const SYSTEMS = {
 const POINTS_MAP = [4, 3, 2, 1];
 const SESSION_KEY = "detour_code";
 
+let pollInterval = null;
+let voteCountInterval = null;
+
 // ============ Sortable list (pointer events — mouse + touch) ============
 
 class SortableList {
@@ -71,6 +74,8 @@ class SortableList {
       }
     }
     if (!inserted) this.container.appendChild(this.placeholder);
+
+    updateRankBadges();
   }
 
   onUp() {
@@ -147,17 +152,13 @@ async function checkStatus(code) {
 }
 
 async function submitVote() {
-  const btn = document.getElementById("submit-btn");
-  if (btn.disabled) return;
-
-  clearError();
-
   const code = document.getElementById("code-input").value.trim();
-  if (!code) { showError("Add meg a belépőkódod!"); return; }
+  if (!code) { showError("Add meg a hozzáférési kódodat!"); return; }
 
   const ranking = [...document.querySelectorAll("#ranking-list [data-system]")]
     .map((el) => el.dataset.system);
 
+  const btn = document.getElementById("submit-btn");
   btn.disabled = true;
   btn.textContent = "Küldés…";
 
@@ -170,6 +171,8 @@ async function submitVote() {
 
     if (res.ok) {
       sessionStorage.setItem(SESSION_KEY, code);
+      const firstRanked = document.querySelector("#ranking-list [data-system]").dataset.system;
+      showThemeFeedback(firstRanked);
       showResults(code);
       return;
     }
@@ -177,8 +180,9 @@ async function submitVote() {
     const data = await res.json();
 
     if (res.status === 409) {
-      // Already voted — still let them see results
       sessionStorage.setItem(SESSION_KEY, code);
+      const firstRanked = document.querySelector("#ranking-list [data-system]").dataset.system;
+      showThemeFeedback(firstRanked);
       showResults(code);
     } else {
       showError(res.status === 404 ? "Érvénytelen kód." : (data.detail || "Hiba. Próbáld újra."));
@@ -198,33 +202,157 @@ function showError(msg) {
   el.classList.remove("hidden");
 }
 
-function clearError() {
-  const el = document.getElementById("vote-error");
-  el.textContent = "";
-  el.classList.add("hidden");
+// ============ Themed submission feedback ============
+
+function showThemeFeedback(systemId) {
+  const creators = {
+    deadlands: createCardEffect,
+    twilight2000: createStaticEffect,
+    starfinder2e: createSparkleEffect,
+    cyberpunk_red: createGlitchEffect,
+  };
+
+  const creator = creators[systemId];
+  if (creator) {
+    const effect = creator();
+    document.body.appendChild(effect);
+    setTimeout(() => effect.remove(), 1800);
+  }
+}
+
+function createCardEffect() {
+  const container = document.createElement("div");
+  container.style.cssText = "position: fixed; inset: 0; z-index: 2000; pointer-events: none;";
+
+  const suits = ["♠", "♥", "♦", "♣"];
+  for (let i = 0; i < 4; i++) {
+    const card = document.createElement("div");
+    card.className = "card-effect";
+    card.textContent = suits[i];
+    card.style.left = 10 + i * 25 + "%";
+    card.style.animationDelay = i * 150 + "ms";
+    container.appendChild(card);
+  }
+
+  return container;
+}
+
+function createStaticEffect() {
+  const effect = document.createElement("div");
+  effect.className = "static-effect";
+  return effect;
+}
+
+function createSparkleEffect() {
+  const container = document.createElement("div");
+  container.style.cssText = "position: fixed; inset: 0; z-index: 2000; pointer-events: none;";
+
+  for (let i = 0; i < 7; i++) {
+    const sparkle = document.createElement("div");
+    sparkle.className = "sparkle";
+    sparkle.textContent = "✦";
+    sparkle.style.left = Math.random() * 100 + "%";
+    sparkle.style.top = Math.random() * 100 + "%";
+    sparkle.style.animationDelay = i * 80 + "ms";
+    container.appendChild(sparkle);
+  }
+
+  return container;
+}
+
+function createGlitchEffect() {
+  const effect = document.createElement("div");
+  effect.className = "glitch-effect";
+  return effect;
+}
+
+// ============ Auto-refresh polling ============
+
+function startAutoRefresh(code) {
+  stopAutoRefresh();
+  pollInterval = setInterval(() => {
+    if (!document.hidden) {
+      fetchAndRender(code, false);
+    }
+  }, 30000);
+}
+
+function stopAutoRefresh() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+// ============ Vote counter (ranking section) ============
+
+async function updateVoteCounter() {
+  try {
+    const res = await fetch("/api/vote-count");
+    if (res.ok) {
+      const data = await res.json();
+      const el = document.getElementById("vote-counter");
+      if (el) {
+        el.textContent = `${data.votes_cast} / ${data.total_codes} szavazat beérkezett`;
+      }
+    }
+  } catch {
+    // Silently fail, not critical
+  }
+}
+
+function startVoteCountPolling() {
+  updateVoteCounter(); // Initial fetch
+  voteCountInterval = setInterval(updateVoteCounter, 30000); // Poll every 30s
+}
+
+function stopVoteCountPolling() {
+  if (voteCountInterval) {
+    clearInterval(voteCountInterval);
+    voteCountInterval = null;
+  }
 }
 
 // ============ Results ============
 
 async function showResults(code) {
+  stopAutoRefresh();
+  stopVoteCountPolling();
   document.getElementById("ranking-section").classList.add("hidden");
   const resultsSection = document.getElementById("results-section");
   resultsSection.classList.remove("hidden");
   resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  await fetchAndRender(code);
+  await fetchAndRender(code, true);
+  startAutoRefresh(code);
 
-  document.getElementById("refresh-btn").onclick = () => fetchAndRender(code);
+  document.getElementById("refresh-btn").addEventListener("click", () => {
+    fetchAndRender(code, false);
+  });
+
+  const handleVisibility = () => {
+    if (document.hidden) {
+      stopAutoRefresh();
+    } else {
+      startAutoRefresh(code);
+    }
+  };
+  document.addEventListener("visibilitychange", handleVisibility);
 }
 
-async function fetchAndRender(code) {
+async function fetchAndRender(code, isInitial = true) {
   const chart = document.getElementById("results-chart");
-  chart.innerHTML = '<p class="chart-loading">Betöltés…</p>';
+
+  if (isInitial) {
+    chart.innerHTML = '<p class="chart-loading">Betöltés…</p>';
+  }
 
   try {
     const res = await fetch(`/api/results/${encodeURIComponent(code)}`);
     if (!res.ok) {
-      chart.innerHTML = '<p class="chart-error">Nem sikerült betölteni az eredményeket.</p>';
+      if (isInitial) {
+        chart.innerHTML = '<p class="chart-error">Nem sikerült betölteni az eredményeket.</p>';
+      }
       return;
     }
     const data = await res.json();
@@ -234,7 +362,9 @@ async function fetchAndRender(code) {
     `;
     renderChart(data.scores);
   } catch {
-    chart.innerHTML = '<p class="chart-error">Hálózati hiba.</p>';
+    if (isInitial) {
+      chart.innerHTML = '<p class="chart-error">Kapcsolódási hiba.</p>';
+    }
   }
 }
 
@@ -259,7 +389,6 @@ function renderChart(scores) {
     `;
   }).join("");
 
-  // Trigger CSS transition on next frame
   requestAnimationFrame(() => {
     chart.querySelectorAll(".chart-bar").forEach((bar) => bar.classList.add("animate"));
   });
@@ -286,12 +415,14 @@ function setupReveal() {
 document.addEventListener("DOMContentLoaded", async () => {
   buildRankingList();
   setupReveal();
+  startVoteCountPolling();
 
   const savedCode = sessionStorage.getItem(SESSION_KEY);
   if (savedCode) {
     document.getElementById("code-input").value = savedCode;
     const status = await checkStatus(savedCode);
     if (status?.voted) {
+      stopVoteCountPolling();
       showResults(savedCode);
       return;
     }
@@ -299,7 +430,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.getElementById("submit-btn").addEventListener("click", submitVote);
 
-  // Allow Enter key in code input
   document.getElementById("code-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") submitVote();
   });

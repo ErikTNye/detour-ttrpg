@@ -46,6 +46,18 @@ class VoteRequest(BaseModel):
         return v
 
 
+@app.get("/api/vote-count")
+def get_vote_count():
+    with get_db() as db:
+        votes_cast = db.execute("SELECT COUNT(*) AS n FROM votes").fetchone()["n"]
+        total_codes = db.execute("SELECT COUNT(*) AS n FROM access_codes").fetchone()["n"]
+
+    return {
+        "votes_cast": votes_cast,
+        "total_codes": total_codes,
+    }
+
+
 @app.get("/api/status/{code}")
 def get_status(code: str):
     code = code.strip()
