@@ -910,6 +910,75 @@ body {
   color: #ff6b6b;
 }
 
+/* ============ Distribution (Stacked) Chart ============ */
+
+/* ============ Distribution toggle ============ */
+
+.distribution-section {
+  margin-top: 48px;
+  border-top: 1px solid var(--rule);
+  padding-top: 32px;
+}
+
+.distribution-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: transparent;
+  border: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 12px 0;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.distribution-toggle:hover {
+  color: var(--ink);
+}
+
+.distribution-toggle-icon {
+  display: inline-block;
+  transition: transform 0.35s ease;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.distribution-section.expanded .distribution-toggle-icon {
+  transform: rotate(90deg);
+}
+
+/* ============ Collapsible chart container ============ */
+
+.distribution-chart {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.45s ease, opacity 0.3s ease;
+}
+
+.distribution-chart.open {
+  max-height: 400px;
+  opacity: 1;
+}
+
+.distribution-canvas-wrap {
+  position: relative;
+  height: 220px;
+  padding-top: 20px;
+  padding-bottom: 8px;
+}
+
+/* ============ Refresh button spacing ============ */
+
+.refresh-btn {
+  margin-top: 48px;
+}
+
 @media (max-width: 640px) {
   .chart-row {
     grid-template-columns: 130px 1fr 44px;
@@ -918,6 +987,10 @@ body {
 
   .rank-item {
     padding: 14px 16px;
+  }
+
+  .distribution-canvas-wrap {
+    height: 180px;
   }
 }
 

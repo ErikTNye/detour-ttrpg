@@ -1,3 +1,7 @@
+// ============================================================
+// Constants
+// ============================================================
+
 const SYSTEMS = {
   deadlands:     { name: "Deadlands",       tag: "Weird West",        color: "#d4a574" },
   twilight2000:  { name: "Twilight: 2000",  tag: "Post-Apokalipszis", color: "#b8ba80" },
@@ -8,18 +12,33 @@ const SYSTEMS = {
 const POINTS_MAP = [4, 3, 2, 1];
 const SESSION_KEY = "detour_code";
 
-let pollInterval = null;
-let voteCountInterval = null;
+// One colour per rank position — reuses the four system card colours
+const RANK_COLORS = [
+  { bg: "rgba(212, 165, 116, 0.85)", label: "1. hely" },  // deadlands gold
+  { bg: "rgba(184, 186, 128, 0.85)", label: "2. hely" },  // twilight olive
+  { bg: "rgba(168, 184, 255, 0.85)", label: "3. hely" },  // starfinder blue
+  { bg: "rgba(255,  46, 136, 0.80)", label: "4. hely" },  // cyberpunk pink
+];
 
-// ============ Sortable list (pointer events — mouse + touch) ============
+// ============================================================
+// State
+// ============================================================
+
+let pollInterval        = null;   // results auto-refresh
+let voteCountInterval   = null;   // pre-vote counter
+let distributionChart   = null;   // Chart.js instance
+
+// ============================================================
+// Drag & drop ranking
+// ============================================================
 
 class SortableList {
   constructor(container) {
-    this.container = container;
-    this.dragEl = null;
+    this.container   = container;
+    this.dragEl      = null;
     this.placeholder = null;
-    this.onMoveRef = null;
-    this.onUpRef = null;
+    this.onMoveRef   = null;
+    this.onUpRef     = null;
 
     container.addEventListener("pointerdown", (e) => {
       const item = e.target.closest("[data-system]");
@@ -52,9 +71,9 @@ class SortableList {
     this.offsetY = e.clientY - rect.top;
 
     this.onMoveRef = this.onMove.bind(this);
-    this.onUpRef = this.onUp.bind(this);
-    document.addEventListener("pointermove", this.onMoveRef, { passive: false });
-    document.addEventListener("pointerup", this.onUpRef);
+    this.onUpRef   = this.onUp.bind(this);
+    document.addEventListener("pointermove",   this.onMoveRef, { passive: false });
+    document.addEventListener("pointerup",     this.onUpRef);
     document.addEventListener("pointercancel", this.onUpRef);
   }
 
@@ -84,36 +103,32 @@ class SortableList {
     el.classList.remove("dragging");
     this.container.insertBefore(el, this.placeholder);
     this.placeholder.remove();
-    this.dragEl = null;
+    this.dragEl      = null;
     this.placeholder = null;
 
-    document.removeEventListener("pointermove", this.onMoveRef);
-    document.removeEventListener("pointerup", this.onUpRef);
+    document.removeEventListener("pointermove",   this.onMoveRef);
+    document.removeEventListener("pointerup",     this.onUpRef);
     document.removeEventListener("pointercancel", this.onUpRef);
 
     updateRankBadges();
   }
 }
 
-// ============ Rank badge sync ============
-
 function updateRankBadges() {
   document.querySelectorAll("#ranking-list [data-system]").forEach((item, i) => {
     item.querySelector(".rank-badge").textContent = i + 1;
-    item.querySelector(".rank-pts").textContent = POINTS_MAP[i] + " pt";
+    item.querySelector(".rank-pts").textContent   = POINTS_MAP[i] + " pt";
   });
 }
 
-// ============ Build ranking list ============
-
 function buildRankingList() {
   const list = document.getElementById("ranking-list");
-  const ids = shuffle(Object.keys(SYSTEMS));
+  const ids  = shuffle(Object.keys(SYSTEMS));
 
   ids.forEach((id, i) => {
-    const sys = SYSTEMS[id];
+    const sys  = SYSTEMS[id];
     const item = document.createElement("div");
-    item.className = `rank-item rank-${id}`;
+    item.className    = `rank-item rank-${id}`;
     item.dataset.system = id;
     item.innerHTML = `
       <span class="rank-badge">${i + 1}</span>
@@ -139,17 +154,9 @@ function shuffle(arr) {
   return a;
 }
 
-// ============ API calls ============
-
-async function checkStatus(code) {
-  try {
-    const res = await fetch(`/api/status/${encodeURIComponent(code)}`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
+// ============================================================
+// Vote form
+// ============================================================
 
 async function submitVote() {
   const code = document.getElementById("code-input").value.trim();
@@ -159,20 +166,19 @@ async function submitVote() {
     .map((el) => el.dataset.system);
 
   const btn = document.getElementById("submit-btn");
-  btn.disabled = true;
+  btn.disabled    = true;
   btn.textContent = "Küldés…";
 
   try {
     const res = await fetch("/api/vote", {
-      method: "POST",
+      method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, ranking }),
+      body:    JSON.stringify({ code, ranking }),
     });
 
     if (res.ok) {
       sessionStorage.setItem(SESSION_KEY, code);
-      const firstRanked = document.querySelector("#ranking-list [data-system]").dataset.system;
-      showThemeFeedback(firstRanked);
+      showThemeFeedback(document.querySelector("#ranking-list [data-system]").dataset.system);
       showResults(code);
       return;
     }
@@ -180,18 +186,18 @@ async function submitVote() {
     const data = await res.json();
 
     if (res.status === 409) {
+      // Already voted — treat as success, go straight to results
       sessionStorage.setItem(SESSION_KEY, code);
-      const firstRanked = document.querySelector("#ranking-list [data-system]").dataset.system;
-      showThemeFeedback(firstRanked);
+      showThemeFeedback(document.querySelector("#ranking-list [data-system]").dataset.system);
       showResults(code);
     } else {
       showError(res.status === 404 ? "Érvénytelen kód." : (data.detail || "Hiba. Próbáld újra."));
-      btn.disabled = false;
+      btn.disabled    = false;
       btn.textContent = "Szavazok";
     }
   } catch {
     showError("Kapcsolódási hiba. Próbáld újra.");
-    btn.disabled = false;
+    btn.disabled    = false;
     btn.textContent = "Szavazok";
   }
 }
@@ -202,11 +208,13 @@ function showError(msg) {
   el.classList.remove("hidden");
 }
 
-// ============ Themed submission feedback ============
+// ============================================================
+// Themed submission effects
+// ============================================================
 
 function showThemeFeedback(systemId) {
   const creators = {
-    deadlands: createCardEffect,
+    deadlands:    createCardEffect,
     twilight2000: createStaticEffect,
     starfinder2e: createSparkleEffect,
     cyberpunk_red: createGlitchEffect,
@@ -224,15 +232,14 @@ function createCardEffect() {
   const container = document.createElement("div");
   container.style.cssText = "position: fixed; inset: 0; z-index: 2000; pointer-events: none;";
 
-  const suits = ["♠", "♥", "♦", "♣"];
-  for (let i = 0; i < 4; i++) {
+  ["♠", "♥", "♦", "♣"].forEach((suit, i) => {
     const card = document.createElement("div");
     card.className = "card-effect";
-    card.textContent = suits[i];
+    card.textContent = suit;
     card.style.left = 10 + i * 25 + "%";
     card.style.animationDelay = i * 150 + "ms";
     container.appendChild(card);
-  }
+  });
 
   return container;
 }
@@ -252,7 +259,7 @@ function createSparkleEffect() {
     sparkle.className = "sparkle";
     sparkle.textContent = "✦";
     sparkle.style.left = Math.random() * 100 + "%";
-    sparkle.style.top = Math.random() * 100 + "%";
+    sparkle.style.top  = Math.random() * 100 + "%";
     sparkle.style.animationDelay = i * 80 + "ms";
     container.appendChild(sparkle);
   }
@@ -266,111 +273,79 @@ function createGlitchEffect() {
   return effect;
 }
 
-// ============ Auto-refresh polling ============
-
-function startAutoRefresh(code) {
-  stopAutoRefresh();
-  pollInterval = setInterval(() => {
-    if (!document.hidden) {
-      fetchAndRender(code, false);
-    }
-  }, 30000);
-}
-
-function stopAutoRefresh() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
-}
-
-// ============ Vote counter (ranking section) ============
+// ============================================================
+// Polling — vote counter (pre-vote) & results auto-refresh
+// ============================================================
 
 async function updateVoteCounter() {
   try {
     const res = await fetch("/api/vote-count");
-    if (res.ok) {
-      const data = await res.json();
-      const el = document.getElementById("vote-counter");
-      if (el) {
-        el.textContent = `${data.votes_cast} / ${data.total_codes} szavazat beérkezett`;
-      }
-    }
+    if (!res.ok) return;
+    const data = await res.json();
+    const el = document.getElementById("vote-counter");
+    if (el) el.textContent = `${data.votes_cast} / ${data.total_codes} szavazat beérkezett`;
   } catch {
-    // Silently fail, not critical
+    // Not critical — fail silently
   }
 }
 
 function startVoteCountPolling() {
-  updateVoteCounter(); // Initial fetch
-  voteCountInterval = setInterval(updateVoteCounter, 30000); // Poll every 30s
+  updateVoteCounter();
+  voteCountInterval = setInterval(updateVoteCounter, 30_000);
 }
 
 function stopVoteCountPolling() {
-  if (voteCountInterval) {
-    clearInterval(voteCountInterval);
-    voteCountInterval = null;
-  }
+  clearInterval(voteCountInterval);
+  voteCountInterval = null;
 }
 
-// ============ Results ============
-
-async function showResults(code) {
+function startAutoRefresh(code) {
   stopAutoRefresh();
-  stopVoteCountPolling();
-  document.getElementById("ranking-section").classList.add("hidden");
-  const resultsSection = document.getElementById("results-section");
-  resultsSection.classList.remove("hidden");
-  resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
-
-  await fetchAndRender(code, true);
-  startAutoRefresh(code);
-
-  document.getElementById("refresh-btn").addEventListener("click", () => {
-    fetchAndRender(code, false);
-  });
-
-  const handleVisibility = () => {
-    if (document.hidden) {
-      stopAutoRefresh();
-    } else {
-      startAutoRefresh(code);
-    }
-  };
-  document.addEventListener("visibilitychange", handleVisibility);
+  pollInterval = setInterval(() => {
+    if (!document.hidden) fetchAndRender(code, false);
+  }, 30_000);
 }
+
+function stopAutoRefresh() {
+  clearInterval(pollInterval);
+  pollInterval = null;
+}
+
+// ============================================================
+// Results — leaderboard, distribution chart, orchestration
+// ============================================================
 
 async function fetchAndRender(code, isInitial = true) {
   const chart = document.getElementById("results-chart");
 
-  if (isInitial) {
-    chart.innerHTML = '<p class="chart-loading">Betöltés…</p>';
-  }
+  if (isInitial) chart.innerHTML = '<p class="chart-loading">Betöltés…</p>';
 
   try {
     const res = await fetch(`/api/results/${encodeURIComponent(code)}`);
     if (!res.ok) {
-      if (isInitial) {
-        chart.innerHTML = '<p class="chart-error">Nem sikerült betölteni az eredményeket.</p>';
-      }
+      if (isInitial) chart.innerHTML = '<p class="chart-error">Nem sikerült betölteni az eredményeket.</p>';
       return;
     }
+
     const data = await res.json();
+
     document.getElementById("votes-count").innerHTML = `
       <p>${data.votes_cast} / ${data.total_codes} szavazat beérkezett</p>
-      ${data.voted_labels.length > 0 ? `<p class="voted-list">Már szavazott: ${data.voted_labels.join(" · ")}</p>` : ""}
+      ${data.voted_labels.length > 0
+        ? `<p class="voted-list">Már szavazott: ${data.voted_labels.join(" · ")}</p>`
+        : ""}
     `;
-    renderChart(data.scores);
+
+    renderLeaderboard(data.scores);
+    if (data.distribution) renderDistributionChart(data.distribution);
   } catch {
-    if (isInitial) {
-      chart.innerHTML = '<p class="chart-error">Kapcsolódási hiba.</p>';
-    }
+    if (isInitial) chart.innerHTML = '<p class="chart-error">Kapcsolódási hiba.</p>';
   }
 }
 
-function renderChart(scores) {
+function renderLeaderboard(scores) {
   const chart = document.getElementById("results-chart");
-  const max = scores[0]?.points || 1;
+  const max   = scores[0]?.points || 1;
 
   chart.innerHTML = scores.map((entry, i) => {
     const sys = SYSTEMS[entry.system];
@@ -394,10 +369,118 @@ function renderChart(scores) {
   });
 }
 
-// ============ Reveal on scroll ============
+function renderDistributionChart(distribution) {
+  const canvas = document.getElementById("distribution-canvas");
+  if (!canvas) return;
+
+  const systemIds    = Object.keys(SYSTEMS);
+  const systemLabels = systemIds.map((id) => SYSTEMS[id].name);
+
+  const datasets = [1, 2, 3, 4].map((rank, i) => ({
+    label:           RANK_COLORS[i].label,
+    data:            systemIds.map((id) => distribution[id]?.[`rank_${rank}`] ?? 0),
+    backgroundColor: RANK_COLORS[i].bg,
+    borderWidth:     0,
+    borderRadius:    2,
+    borderSkipped:   false,
+  }));
+
+  const tickFont = { family: "'JetBrains Mono', monospace", size: 10 };
+
+  if (distributionChart) {
+    // Update in-place so bars animate on refresh
+    distributionChart.data.datasets.forEach((ds, i) => { ds.data = datasets[i].data; });
+    distributionChart.update();
+    return;
+  }
+
+  distributionChart = new Chart(canvas, {
+    type: "bar",
+    data: { labels: systemLabels, datasets },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 700, easing: "easeOutQuart" },
+      scales: {
+        x: {
+          stacked: true,
+          min: 0,
+          ticks: { color: "#8a8783", font: tickFont, stepSize: 1, precision: 0 },
+          grid:   { color: "rgba(232,230,225,0.07)" },
+          border: { color: "rgba(232,230,225,0.15)" },
+        },
+        y: {
+          stacked: true,
+          ticks: { color: "#e8e6e1", font: { ...tickFont, size: 11 } },
+          grid:   { display: false },
+          border: { display: false },
+        },
+      },
+      plugins: {
+        legend: {
+          position: "bottom",
+          align: "start",
+          labels: { color: "#8a8783", font: tickFont, boxWidth: 12, boxHeight: 12, padding: 16 },
+        },
+        tooltip: {
+          backgroundColor: "#1a1a1e",
+          borderColor:     "rgba(232,230,225,0.15)",
+          borderWidth:     1,
+          titleColor:      "#e8e6e1",
+          bodyColor:       "#8a8783",
+          titleFont:       tickFont,
+          bodyFont:        tickFont,
+          callbacks: {
+            label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.x} szavazat`,
+          },
+        },
+      },
+    },
+  });
+}
+
+function setupDistributionToggle() {
+  const toggle  = document.getElementById("distribution-toggle");
+  const section = document.querySelector(".distribution-section");
+  const chart   = document.getElementById("distribution-chart");
+
+  toggle.addEventListener("click", () => {
+    const opening = !chart.classList.contains("open");
+    section.classList.toggle("expanded", opening);
+    chart.classList.toggle("open", opening);
+    // Resize after the CSS transition so canvas measures its final dimensions
+    if (opening && distributionChart) setTimeout(() => distributionChart.resize(), 420);
+  });
+}
+
+async function showResults(code) {
+  stopAutoRefresh();
+  stopVoteCountPolling();
+
+  document.getElementById("ranking-section").classList.add("hidden");
+  const resultsSection = document.getElementById("results-section");
+  resultsSection.classList.remove("hidden");
+  resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  await fetchAndRender(code, true);
+  startAutoRefresh(code);
+  setupDistributionToggle();
+
+  document.getElementById("refresh-btn").addEventListener("click", () => fetchAndRender(code, false));
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopAutoRefresh();
+    else                 startAutoRefresh(code);
+  });
+}
+
+// ============================================================
+// Page setup
+// ============================================================
 
 function setupReveal() {
-  const section = document.getElementById("ranking-section");
+  const section  = document.getElementById("ranking-section");
   const observer = new IntersectionObserver(
     (entries) => {
       if (entries[0].isIntersecting) {
@@ -405,12 +488,10 @@ function setupReveal() {
         observer.disconnect();
       }
     },
-    { threshold: 0.12 }
+    { threshold: 0.12 },
   );
   observer.observe(section);
 }
-
-// ============ Init ============
 
 document.addEventListener("DOMContentLoaded", async () => {
   buildRankingList();
@@ -429,8 +510,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   document.getElementById("submit-btn").addEventListener("click", submitVote);
-
   document.getElementById("code-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") submitVote();
   });
 });
+
+async function checkStatus(code) {
+  try {
+    const res = await fetch(`/api/status/${encodeURIComponent(code)}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}

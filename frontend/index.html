@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Special+Elite&family=Rye&family=VT323&family=Orbitron:wght@500;700;900&family=JetBrains+Mono:wght@400;700&family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -309,6 +310,19 @@
     <p class="votes-count" id="votes-count"></p>
   </div>
   <div class="results-chart" id="results-chart"></div>
+
+  <div class="distribution-section">
+    <button class="distribution-toggle" id="distribution-toggle">
+      <span class="distribution-toggle-label">Rangsor eloszlása</span>
+      <span class="distribution-toggle-icon">▸</span>
+    </button>
+    <div class="distribution-chart" id="distribution-chart">
+      <div class="distribution-canvas-wrap">
+        <canvas id="distribution-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
   <button class="refresh-btn" id="refresh-btn">Frissítés</button>
 </section>
 

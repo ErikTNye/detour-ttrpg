@@ -172,6 +172,10 @@ def get_results(code: str):
         ).fetchone()["n"]
 
     scores = {system: 0 for system in SYSTEM_IDS}
+    distribution = {
+        system: {"rank_1": 0, "rank_2": 0, "rank_3": 0, "rank_4": 0}
+        for system in SYSTEM_IDS
+    }
 
     for row in votes:
         ranked_systems = (
@@ -182,7 +186,10 @@ def get_results(code: str):
         )
 
         for index, system in enumerate(ranked_systems):
-            scores[system] += POINTS[index]
+            points = POINTS[index]
+            scores[system] += points
+            rank_key = f"rank_{index + 1}"
+            distribution[system][rank_key] += 1
 
     ranking = sorted(
         scores.items(),
@@ -197,6 +204,7 @@ def get_results(code: str):
             {"system": system, "points": points}
             for system, points in ranking
         ],
+        "distribution": distribution,
     }
 
 
