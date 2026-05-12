@@ -1,7 +1,7 @@
 """
 Insert private access codes into the voting database.
 
-Create an access-codes.txt file in the project root:
+Create private/access-codes.txt in the project root (gitignored):
     code,label
 
 Example:

@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 DB_PATH = Path("/app/data/votes.db")
