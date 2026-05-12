@@ -9,4 +9,4 @@ services:
       - ./data:/app/data
       - ./frontend:/app/frontend:ro
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
