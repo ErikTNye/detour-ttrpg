@@ -1,8 +1,178 @@
-# FastAPI voting backend — placeholder, implementation coming next
-from fastapi import FastAPI
+import sqlite3
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, field_validator
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+from database import POINTS, SYSTEM_IDS, SYSTEMS, get_db, init_db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+class VoteRequest(BaseModel):
+    code: str
+    ranking: list[str]  # [rank_1, rank_2, rank_3, rank_4] — first is most preferred
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Access code cannot be empty")
+        return cleaned
+
+    @field_validator("ranking")
+    @classmethod
+    def validate_ranking(cls, v: list[str]) -> list[str]:
+        if len(v) != 4:
+            raise ValueError("Must rank all 4 systems")
+
+        if set(v) != SYSTEMS:
+            raise ValueError(f"Invalid systems. Expected: {SYSTEM_IDS}")
+
+        return v
+
+
+@app.get("/api/status/{code}")
+def get_status(code: str):
+    code = code.strip()
+
+    if not code:
+        raise HTTPException(status_code=404, detail="Invalid code")
+
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, used_at FROM access_codes WHERE code = ?",
+            (code,),
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Invalid code")
+
+    return {
+        "valid": True,
+        "voted": row["used_at"] is not None,
+    }
+
+
+@app.post("/api/vote")
+def submit_vote(vote: VoteRequest):
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, used_at FROM access_codes WHERE code = ?",
+            (vote.code,),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Invalid code")
+
+        if row["used_at"] is not None:
+            raise HTTPException(status_code=409, detail="Code already used")
+
+        try:
+            db.execute(
+                """
+                INSERT INTO votes (
+                    code_id,
+                    rank_1,
+                    rank_2,
+                    rank_3,
+                    rank_4
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (row["id"], *vote.ranking),
+            )
+
+            db.execute(
+                """
+                UPDATE access_codes
+                SET used_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (row["id"],),
+            )
+
+        except sqlite3.IntegrityError:
+            # Covers the unlikely double-submit / race case
+            # if UNIQUE(code_id) exists on the votes table.
+            raise HTTPException(status_code=409, detail="Code already used")
+
+    return {"success": True}
+
+
+@app.get("/api/results/{code}")
+def get_results(code: str):
+    code = code.strip()
+
+    if not code:
+        raise HTTPException(status_code=404, detail="Invalid code")
+
+    with get_db() as db:
+        access_code = db.execute(
+            "SELECT used_at FROM access_codes WHERE code = ?",
+            (code,),
+        ).fetchone()
+
+        if not access_code:
+            raise HTTPException(status_code=404, detail="Invalid code")
+
+        if access_code["used_at"] is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Vote first to view results",
+            )
+
+        votes = db.execute(
+            """
+            SELECT rank_1, rank_2, rank_3, rank_4
+            FROM votes
+            """
+        ).fetchall()
+
+        total_codes = db.execute(
+            "SELECT COUNT(*) AS n FROM access_codes"
+        ).fetchone()["n"]
+
+    scores = {system: 0 for system in SYSTEM_IDS}
+
+    for row in votes:
+        ranked_systems = (
+            row["rank_1"],
+            row["rank_2"],
+            row["rank_3"],
+            row["rank_4"],
+        )
+
+        for index, system in enumerate(ranked_systems):
+            scores[system] += POINTS[index]
+
+    ranking = sorted(
+        scores.items(),
+        key=lambda item: (-item[1], SYSTEM_IDS.index(item[0])),
+    )
+
+    return {
+        "votes_cast": len(votes),
+        "total_codes": total_codes,
+        "scores": [
+            {"system": system, "points": points}
+            for system, points in ranking
+        ],
+    }
+
+
+# Serve frontend — must come after all API routes
+app.mount(
+    "/",
+    StaticFiles(directory="/app/frontend", html=True),
+    name="static",
+)

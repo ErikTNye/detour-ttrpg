@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Appdata
+data/
+# Private local-only files
+private/*
+!private/access-codes.example.txt

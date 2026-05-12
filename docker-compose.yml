@@ -4,5 +4,6 @@ services:
     restart: unless-stopped
     volumes:
       - ./data:/app/data
+      - ./frontend:/app/frontend:ro
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"

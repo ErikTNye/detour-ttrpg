@@ -1,0 +1,6 @@
+# Format:
+# access-code,label
+
+example-code-1,Player 1
+example-code-2,Player 2
+example-code-3,Player 3
