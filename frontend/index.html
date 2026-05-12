@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Special+Elite&family=Rye&family=VT323&family=Orbitron:wght@500;700;900&family=JetBrains+Mono:wght@400;700&family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
 </head>
 <body>
 
@@ -276,8 +277,42 @@
 
 </div>
 
+<!-- ============ RANKING ============ -->
+<section class="ranking-section" id="ranking-section">
+  <div class="ranking-header">
+    <div class="ranking-eyebrow">— A te rangsorod —</div>
+    <h2>Állítsd sorba a rendszereket</h2>
+    <p>Az első helyre kerülő kap 4 pontot, a negyedik 1-et.</p>
+  </div>
+
+  <div class="ranking-list" id="ranking-list">
+    <!-- populated by app.js -->
+  </div>
+
+  <div class="vote-form">
+    <div class="code-field">
+      <label for="code-input">Belépőkód</label>
+      <input type="text" id="code-input" autocomplete="off" spellcheck="false" placeholder="iron-tide-9">
+    </div>
+    <button class="submit-btn" id="submit-btn">Szavazok</button>
+    <p class="vote-note">A leadott sorrend később már nem módosítható.</p>
+    <p class="vote-error hidden" id="vote-error"></p>
+  </div>
+</section>
+
+<!-- ============ RESULTS ============ -->
+<section class="results-section hidden" id="results-section">
+  <div class="results-header">
+    <div class="results-eyebrow">— Jelenlegi állás —</div>
+    <h2>Eredmények</h2>
+    <p class="votes-count" id="votes-count"></p>
+  </div>
+  <div class="results-chart" id="results-chart"></div>
+  <button class="refresh-btn" id="refresh-btn">Frissítés</button>
+</section>
+
 <section class="footer">
-  <p class="question">Melyik kitérő szólít meg benneteket?</p>
+  <p class="question">Melyik kitérő szólít meg téged?</p>
   <p>
     Nincs rossz választás · Szavazzatok a chatben<br>
     Mind a négyhez van azonnal játszható anyag · Mind a négy működik Foundryban<br>

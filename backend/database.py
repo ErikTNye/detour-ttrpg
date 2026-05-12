@@ -1,8 +1,10 @@
+import os
 import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-DB_PATH = Path("/app/data/votes.db")
+_here = Path(__file__).resolve().parent
+DB_PATH = Path(os.getenv("DB_PATH", str(_here.parent / "data" / "votes.db")))
 
 SYSTEM_IDS = (
     "deadlands",

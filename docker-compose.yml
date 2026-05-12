@@ -2,6 +2,9 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    environment:
+      - DB_PATH=/app/data/votes.db
+      - FRONTEND_DIR=/app/frontend
     volumes:
       - ./data:/app/data
       - ./frontend:/app/frontend:ro

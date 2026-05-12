@@ -1,11 +1,16 @@
+import os
 import sqlite3
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 from database import POINTS, SYSTEM_IDS, SYSTEMS, get_db, init_db
+
+_here = Path(__file__).resolve().parent
+FRONTEND_DIR = os.getenv("FRONTEND_DIR", str(_here.parent / "frontend"))
 
 
 @asynccontextmanager
@@ -138,6 +143,18 @@ def get_results(code: str):
             """
         ).fetchall()
 
+        voted_labels = [
+            row["label"]
+            for row in db.execute(
+                """
+                SELECT ac.label FROM access_codes ac
+                JOIN votes v ON ac.id = v.code_id
+                ORDER BY v.voted_at ASC
+                """
+            ).fetchall()
+            if row["label"]
+        ]
+
         total_codes = db.execute(
             "SELECT COUNT(*) AS n FROM access_codes"
         ).fetchone()["n"]
@@ -163,6 +180,7 @@ def get_results(code: str):
     return {
         "votes_cast": len(votes),
         "total_codes": total_codes,
+        "voted_labels": voted_labels,
         "scores": [
             {"system": system, "points": points}
             for system, points in ranking
@@ -173,6 +191,6 @@ def get_results(code: str):
 # Serve frontend — must come after all API routes
 app.mount(
     "/",
-    StaticFiles(directory="/app/frontend", html=True),
+    StaticFiles(directory=FRONTEND_DIR, html=True),
     name="static",
 )
